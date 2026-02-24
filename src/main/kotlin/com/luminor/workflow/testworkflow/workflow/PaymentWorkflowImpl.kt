@@ -56,9 +56,14 @@ class PaymentWorkflowImpl : PaymentWorkflow {
 
     private fun executePaymentFlow(request: PaymentRequest): PaymentResult {
 
-        // ── Step 1: Fraud check (NEW — inserted before reserveFunds) ─────────
-        logger.info { "Running fraud check for payment ${request.paymentId}" }
-        activities.fraudCheck(request.paymentId)
+        // ── Step 1: Fraud check (patched with getVersion) ────────────────────
+        // DEFAULT_VERSION  → old execution, started before this patch → skip fraudCheck
+        // version 1        → new execution, started after this patch  → run fraudCheck
+        val version = Workflow.getVersion("addFraudCheck", Workflow.DEFAULT_VERSION, 1)
+        if (version != Workflow.DEFAULT_VERSION) {
+            logger.info { "Running fraud check for payment ${request.paymentId}" }
+            activities.fraudCheck(request.paymentId)
+        }
 
         // ── Step 2: Reserve funds (fire & forget, wait for signal) ────────────
         logger.info { "Reserving funds for payment ${request.paymentId}" }
