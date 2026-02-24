@@ -1,0 +1,27 @@
+# Temporal Dynamic Configuration for Development
+# This file contains runtime configuration that can be changed without restarting Temporal
+
+# Maximum length for various ID fields
+limit.maxIDLength:
+  - value: 255
+    constraints: {}
+
+# Force refresh of search attributes cache on every read (useful for development)
+system.forceSearchAttributesCacheRefreshOnRead:
+  - value: true # Dev setup only. Please don't turn this on in production.
+    constraints: {}
+
+# History service configuration
+history.persistenceMaxQPS:
+  - value: 3000
+    constraints: {}
+
+# Frontend service configuration
+frontend.persistenceMaxQPS:
+  - value: 3000
+    constraints: {}
+
+# Matching service configuration
+matching.persistenceMaxQPS:
+  - value: 3000
+    constraints: {}
