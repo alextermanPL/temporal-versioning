@@ -11,6 +11,11 @@ import org.eclipse.microprofile.rest.client.inject.RegisterRestClient
 @RegisterRestClient(configKey = "payment-api")
 interface PaymentApiClient {
 
+    /** Fraud check — synchronous call before reserving funds. */
+    @GET
+    @Path("/api/payment/fraud-check/{paymentId}")
+    fun fraudCheck(@PathParam("paymentId") paymentId: String): Response
+
     /** Fire & forget — bank accepts reservation asynchronously, result comes via callback. */
     @POST
     @Path("/api/payment/reserve/{paymentId}")
