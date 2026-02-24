@@ -7,6 +7,10 @@ import io.temporal.activity.ActivityMethod
 @ActivityInterface
 interface PaymentActivities {
 
+    /** Checks payment for fraud before reserving funds. */
+    @ActivityMethod
+    fun fraudCheck(paymentId: String)
+
     /** Sends a reservation request (fire & forget). Result arrives via signal. */
     @ActivityMethod
     fun reserveFunds(paymentId: String)
