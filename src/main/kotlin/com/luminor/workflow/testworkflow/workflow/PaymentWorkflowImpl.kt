@@ -56,7 +56,11 @@ class PaymentWorkflowImpl : PaymentWorkflow {
 
     private fun executePaymentFlow(request: PaymentRequest): PaymentResult {
 
-        // ── Step 1: Reserve funds (fire & forget, wait for signal) ────────────
+        // ── Step 1: Fraud check (NEW — inserted before reserveFunds) ─────────
+        logger.info { "Running fraud check for payment ${request.paymentId}" }
+        activities.fraudCheck(request.paymentId)
+
+        // ── Step 2: Reserve funds (fire & forget, wait for signal) ────────────
         logger.info { "Reserving funds for payment ${request.paymentId}" }
         activities.reserveFunds(request.paymentId)
 
