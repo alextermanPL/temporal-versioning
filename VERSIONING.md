@@ -63,7 +63,7 @@ Name your workers with a deployment version. Temporal server routes each workflo
 
 **When to use:** new projects or when you want clean code without patching.
 
-### Option A: Pinned (recommended default)
+### Option A: Pinned (recommended)
 
 Old executions stay on old workers. New executions go to new workers. They never mix.
 
@@ -151,6 +151,97 @@ Before deploying any change, validate with `WorkflowReplayer`. Download event hi
 ```kotlin
 val file = File("workflow_history.json")
 WorkflowReplayer.replayWorkflowExecution(file, OrderWorkflowImpl::class.java)
+```
+
+---
+
+## Live Example: Walking Through the Commits
+
+This repository contains a working demonstration of Strategy 1 across 3 commits.
+Use the commands below to switch between each state and observe the behaviour.
+
+### Prerequisites
+
+```bash
+docker-compose up -d      # Temporal + Postgres + Wiremock
+./gradlew quarkusDev      # start the worker (keep running in a separate terminal)
+```
+
+---
+
+### Commit 1 — Baseline: working payment workflow
+
+```bash
+git checkout b5c10b2
+```
+
+The workflow has 3 activities in sequence: `reserveFunds → transfer → publishCompleted`.
+Start a payment and send the reservation signal — it completes successfully.
+
+```bash
+./success_payment.sh
+```
+
+Watch it complete in the Temporal UI at **http://localhost:8088**.
+
+---
+
+### Commit 2 — Breaking change: `fraudCheck` inserted before `reserveFunds`
+
+```bash
+git checkout 07ac58e
+```
+
+Restart the worker. Now start a **new long-running workflow** (20-min reservation timer):
+
+```bash
+curl -s -X POST http://localhost:9090/payments \
+  -H "Content-Type: application/json" \
+  -d '{"paymentId":"1","amount":100,"currency":"EUR","debtorAccount":"LT001","creditorAccount":"LT002"}' | jq .
+```
+
+Leave this workflow **running and waiting** for the reservation signal. Now restart the worker again with commit 2 code still loaded — or simply observe the logs. The running workflow will immediately produce:
+
+```
+NonDeterministicException: Command COMMAND_TYPE_SCHEDULE_ACTIVITY_TASK
+  doesn't match event EVENT_TYPE_ACTIVITY_TASK_SCHEDULED
+  expected: 'FraudCheck'
+  actual:   'ReserveFunds'
+```
+
+The workflow is **stuck**. New workflows start fine (they run `fraudCheck` then `reserveFunds`),
+but the old running one cannot resume.
+
+---
+
+### Commit 3 — Fix: `Workflow.getVersion()` patch
+
+```bash
+git checkout 52a7e69
+```
+
+Restart the worker. The stuck workflow unblocks immediately:
+
+- `getVersion("addFraudCheck", DEFAULT_VERSION, 1)` reads `DEFAULT_VERSION` from the marker in history
+- The old execution **skips** `fraudCheck` and continues from `reserveFunds`
+- Send the reservation signal to complete it:
+
+```bash
+curl -s -X POST http://localhost:9090/payments/1/reservation-result \
+  -H "Content-Type: application/json" \
+  -d '{"success": true}' | jq .
+```
+
+New workflows started after this commit will run `fraudCheck` (version = 1).
+Old workflows that were running will skip it (version = `DEFAULT_VERSION`).
+**Both coexist safely on the same worker.**
+
+---
+
+### Restore to latest
+
+```bash
+git checkout main
 ```
 
 ---
