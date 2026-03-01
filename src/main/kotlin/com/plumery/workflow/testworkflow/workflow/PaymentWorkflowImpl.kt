@@ -56,9 +56,14 @@ class PaymentWorkflowImpl : PaymentWorkflow {
 
     private fun executePaymentFlow(request: PaymentRequest): PaymentResult {
 
-        // ── Step 1: Fraud check (NEW — inserted before reserveFunds) ─────────
-        logger.info { "Running fraud check for payment ${request.paymentId}" }
-        activities.fraudCheck(request.paymentId)
+        // ── Step 1: Fraud check (patched with getVersion) ────────────────────
+        // DEFAULT_VERSION  → old execution, started before this patch → skip fraudCheck
+        // version 1        → new execution, started after this patch  → run fraudCheck
+        val version = Workflow.getVersion("addFraudCheck", Workflow.DEFAULT_VERSION, 1)
+        if (version != Workflow.DEFAULT_VERSION) {
+            logger.info { "Running fraud check for payment ${request.paymentId}" }
+            activities.fraudCheck(request.paymentId)
+        }
 
         // ── Step 2: Reserve funds (fire & forget, wait for signal) ────────────
         logger.info { "Reserving funds for payment ${request.paymentId}" }
@@ -80,7 +85,7 @@ class PaymentWorkflowImpl : PaymentWorkflow {
             return PaymentResult(request.paymentId, PaymentStatus.FAILED, reason)
         }
 
-        // ── Step 3: Transfer (sync, retried by Temporal on 5XX) ──────────────
+        // ── Step 2: Transfer (sync, retried by Temporal on 5XX) ──────────────
         logger.info { "Executing transfer for payment ${request.paymentId}" }
         val transferResponse = activities.transfer(request.paymentId)
 
@@ -90,7 +95,7 @@ class PaymentWorkflowImpl : PaymentWorkflow {
             return PaymentResult(request.paymentId, PaymentStatus.FAILED, "Transfer failed: ${transferResponse.status}")
         }
 
-        // ── Step 4: Publish payment completed ────────────────────────────────
+        // ── Step 3: Publish payment completed ────────────────────────────────
         logger.info { "Payment ${request.paymentId} completed successfully" }
         activities.publishCompleted(request.paymentId)
         return PaymentResult(request.paymentId, PaymentStatus.COMPLETED)
