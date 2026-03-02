@@ -16,6 +16,11 @@ class PaymentActivitiesImpl @Inject constructor(
     @RestClient private val paymentApiClient: PaymentApiClient,
 ) : PaymentActivities {
 
+    override fun fraudCheck(paymentId: String) {
+        logger.info { "Running fraud check for payment $paymentId" }
+        paymentApiClient.fraudCheck(paymentId)
+    }
+
     /**
      * Sends the reservation request and returns immediately (fire & forget).
      * The bank will later call back our signal endpoint with the result.
