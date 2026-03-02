@@ -56,12 +56,16 @@ class PaymentWorkflowImpl : PaymentWorkflow {
 
     private fun executePaymentFlow(request: PaymentRequest): PaymentResult {
 
-        // ── Step 1: Reserve funds (fire & forget, wait for signal) ────────────
+        // ── Step 1: Fraud check (NEW — inserted before reserveFunds) ─────────
+        logger.info { "Running fraud check for payment ${request.paymentId}" }
+        activities.fraudCheck(request.paymentId)
+
+        // ── Step 2: Reserve funds (fire & forget, wait for signal) ────────────
         logger.info { "Reserving funds for payment ${request.paymentId}" }
         activities.reserveFunds(request.paymentId)
 
-        // Block until the bank signals back, or timer1 (2 min) expires
-        val signalReceived = Workflow.await(Duration.ofMinutes(20)) { reservationResult != null }
+        // Block until the bank signals back, or 60 min expires
+        val signalReceived = Workflow.await(Duration.ofMinutes(60)) { reservationResult != null }
 
         if (!signalReceived) {
             logger.warn { "Reservation signal timed out for payment ${request.paymentId}" }
@@ -76,7 +80,7 @@ class PaymentWorkflowImpl : PaymentWorkflow {
             return PaymentResult(request.paymentId, PaymentStatus.FAILED, reason)
         }
 
-        // ── Step 2: Transfer (sync, retried by Temporal on 5XX) ──────────────
+        // ── Step 3: Transfer (sync, retried by Temporal on 5XX) ──────────────
         logger.info { "Executing transfer for payment ${request.paymentId}" }
         val transferResponse = activities.transfer(request.paymentId)
 
@@ -86,7 +90,7 @@ class PaymentWorkflowImpl : PaymentWorkflow {
             return PaymentResult(request.paymentId, PaymentStatus.FAILED, "Transfer failed: ${transferResponse.status}")
         }
 
-        // ── Step 3: Publish payment completed ────────────────────────────────
+        // ── Step 4: Publish payment completed ────────────────────────────────
         logger.info { "Payment ${request.paymentId} completed successfully" }
         activities.publishCompleted(request.paymentId)
         return PaymentResult(request.paymentId, PaymentStatus.COMPLETED)
