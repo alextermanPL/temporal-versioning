@@ -107,15 +107,25 @@ every task attempt fails on replay.
 **How the fix works:**
 
 ```kotlin
-val version = Workflow.getVersion("addFraudCheck", Workflow.DEFAULT_VERSION, 1)
-if (version != Workflow.DEFAULT_VERSION) {
-    activities.fraudCheck(paymentId)   // new workflows only
+val version = Workflow.getVersion("addFraudCheck", Workflow.DEFAULT_VERSION, 2)
+when (version) {
+    Workflow.DEFAULT_VERSION -> {
+        // Oldest baseline workflows skip fraud check
+    }
+    1 -> {
+        // Middle-aged workflows run basic fraud check
+        activities.fraudCheck(paymentId)
+    }
+    else -> {
+        // New workflows run advanced fraud check
+        activities.fraudCheck(paymentId, "advanced")
+    }
 }
-activities.reserveFunds(paymentId)     // always runs
 ```
 
-- Old workflow (no marker in history) → `getVersion` returns `DEFAULT_VERSION` → skips `fraudCheck` → replay matches ✅
-- New workflow → `getVersion` records marker with version `1` → `fraudCheck` runs ✅
+- Old workflow (no marker) → `getVersion` returns `DEFAULT_VERSION` → skips `fraudCheck` ✅
+- Mid-age workflow (v1 marker) → `getVersion` returns `1` → runs basic `fraudCheck` ✅
+- New workflow (v2 marker) → `getVersion` returns `2` → runs advanced `fraudCheck` ✅
 
 **Validate:**
 - Workflow status changes to **Completed**
