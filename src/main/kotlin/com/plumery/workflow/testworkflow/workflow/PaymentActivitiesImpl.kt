@@ -16,8 +16,9 @@ class PaymentActivitiesImpl @Inject constructor(
     @RestClient private val paymentApiClient: PaymentApiClient,
 ) : PaymentActivities {
 
-    override fun fraudCheck(paymentId: String) {
-        logger.info { "Running fraud check for payment $paymentId" }
+    override fun fraudCheck(paymentId: String, strategy: String?) {
+        val strat = strategy ?: "basic"
+        logger.info { "Running fraud check ($strat) for payment $paymentId" }
         paymentApiClient.fraudCheck(paymentId)
     }
 
