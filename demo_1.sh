@@ -3,7 +3,7 @@ set -e
 
 # Tags that point to the relevant commits
 COMMIT_BASELINE="baseline"
-COMMIT_BREAKING="breaking"
+COMMIT_BREAKING="breaking_change"
 PORT=9090
 LOG=/tmp/quarkus-demo.log
 GRADLE_PID=""
