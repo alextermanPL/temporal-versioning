@@ -172,7 +172,7 @@ docker-compose up -d      # Temporal + Postgres + Wiremock
 ### Commit 1 — Baseline: working payment workflow
 
 ```bash
-git checkout b5c10b2
+git checkout baseline
 ```
 
 The workflow has 3 activities in sequence: `reserveFunds → transfer → publishCompleted`.
@@ -182,14 +182,14 @@ Start a payment and send the reservation signal — it completes successfully.
 ./success_payment.sh
 ```
 
-Watch it complete in the Temporal UI at **http://localhost:8088**.
+Watch it complete in the Temporal UI at **http://localhost:8080**.
 
 ---
 
 ### Commit 2 — Breaking change: `fraudCheck` inserted before `reserveFunds`
 
 ```bash
-git checkout 07ac58e
+git checkout breaking_change
 ```
 
 Restart the worker. Now start a **new long-running workflow** (20-min reservation timer):
@@ -217,12 +217,12 @@ but the old running one cannot resume.
 ### Commit 3 — Fix: `Workflow.getVersion()` patch
 
 ```bash
-git checkout 52a7e69
+git checkout solution/version-sdk
 ```
 
 Restart the worker. The stuck workflow unblocks immediately:
 
-- `getVersion("addFraudCheck", DEFAULT_VERSION, 1)` reads `DEFAULT_VERSION` from the marker in history
+- `getVersion("addFraudCheck", DEFAULT_VERSION, 2)` reads `DEFAULT_VERSION` from the marker in history
 - The old execution **skips** `fraudCheck` and continues from `reserveFunds`
 - Send the reservation signal to complete it:
 
@@ -232,9 +232,10 @@ curl -s -X POST http://localhost:9090/payments/1/reservation-result \
   -d '{"success": true}' | jq .
 ```
 
-New workflows started after this commit will run `fraudCheck` (version = 1).
+New workflows started after this commit will run advanced `fraudCheck` (version = 2).
+Mid-age workflows will run basic `fraudCheck` (version = 1).
 Old workflows that were running will skip it (version = `DEFAULT_VERSION`).
-**Both coexist safely on the same worker.**
+**All coexist safely on the same worker.**
 
 ---
 
