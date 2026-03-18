@@ -9,7 +9,7 @@ interface PaymentActivities {
 
     /** Checks payment for fraud before reserving funds. */
     @ActivityMethod
-    fun fraudCheck(paymentId: String)
+    fun fraudCheck(paymentId: String, strategy: String? = null)
 
     /** Sends a reservation request (fire & forget). Result arrives via signal. */
     @ActivityMethod
