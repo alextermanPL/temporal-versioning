@@ -10,7 +10,7 @@
 #   - Docker Compose stack running (Temporal + Wiremock)
 #   - Two terminal windows (or tmux) — this script guides you step by step
 #   - Branch: feat/strategy-2-worker-versioning (breaking change without getVersion)
-#   - Baseline code in commit b5c10b2 (no fraudCheck)
+#   - Baseline code in tag baseline (no fraudCheck)
 #
 # Two workers run simultaneously on different ports:
 #   v1 worker  →  port 9090  (baseline code, no fraudCheck)
@@ -46,9 +46,9 @@ ok "Temporal is running"
 echo ""
 pause "STEP 1 — Build v1 JAR (baseline code, no fraudCheck)"
 
-info "Stashing current changes and checking out v1 commit (b5c10b2)..."
+info "Stashing current changes and checking out baseline tag..."
 git stash
-git checkout b5c10b2 -- src/
+git checkout baseline -- src/
 
 info "Building v1 JAR..."
 ./gradlew quarkusBuild -q

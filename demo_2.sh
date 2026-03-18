@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-COMMIT_FIX="version_sdk_fix"
+COMMIT_FIX="solution/version-sdk"
 PORT=9090
 LOG=/tmp/quarkus-demo.log
 GRADLE_PID=""
@@ -63,7 +63,7 @@ curl -s -X POST "http://localhost:$PORT/payments/1/reservation-result" \
   -d '{"success": true}' \
   | jq .
 
-section "DONE — check Temporal UI at http://localhost:8088"
+section "DONE — check Temporal UI at http://localhost:8080"
 echo "  The workflow should have completed with status COMPLETED."
 echo "  New workflows started now will run fraudCheck (version=1)."
 echo "  Old workflows that were stuck are now unblocked (version=DEFAULT_VERSION)."
