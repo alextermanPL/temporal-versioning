@@ -1,22 +1,54 @@
 # Temporal Workflow Versioning Strategies
 
-Temporal replays workflow history on every task. Your code must produce the **exact same sequence of commands** (activities, timers, child workflows) as what is recorded in history. Any mismatch causes a non-determinism error and breaks running workflows.
+Temporal replays workflow history on every task. Your code must produce the **exact same sequence of commands** as what is recorded in history. A command is anything that produces a history event: scheduling an activity, starting a timer, launching a child workflow, recording a marker (`getVersion`, `sideEffect`), signalling an external workflow, or upserting search attributes. Pure logic (if/else, variables, logging) produces no command and is safe to change. Any mismatch in the command sequence causes a non-determinism error and breaks running workflows.
 
 ---
 
 ## What Breaks Running Workflows
 
-| Change | Breaks? |
-|---|---|
-| Insert a new activity/timer **anywhere** before where running WFs currently are | **Yes** |
-| Remove an existing activity or timer | **Yes** |
-| Reorder activities or timers | **Yes** |
-| Add/remove `Workflow.sleep()` | **Yes** |
-| Change `Workflow.sleep()` duration (non-zero ↔ non-zero) | No |
-| Change `Workflow.sleep()` duration to/from `0` | **Yes** |
-| Change workflow execution timeout | No |
-| Change activity parameters or timeouts | No |
-| Change non-command business logic | No |
+Temporal replays by comparing the sequence of **commands** the code emits against what is recorded in history. A command is anything that produces a history event: scheduling an activity, starting a timer, recording a marker, launching a child workflow, etc. Pure logic (if/else, variable assignment, logging) produces no command and is safe to change.
+
+| Change | Breaks? | Why |
+|---|---|---|
+| **Activities** | | |
+| Insert a new activity anywhere before where running WFs currently are | **Yes** | Command sequence shifts |
+| Remove an existing activity | **Yes** | Command sequence shifts |
+| Reorder activities | **Yes** | Command sequence shifts |
+| Change activity type name (rename the activity method) | **Yes** | History records the name |
+| Change activity parameters or timeouts | No | Not part of the command sequence |
+| **Timers** | | |
+| Add/remove `Workflow.sleep()` or `Workflow.newTimer()` | **Yes** | Adds/removes a timer command |
+| Change `Workflow.sleep()` duration (non-zero ↔ non-zero) | No | Duration is not replayed |
+| Change `Workflow.sleep()` duration to/from `0` | **Yes** | Zero duration skips the timer command entirely |
+| **`Workflow.await()`** | | |
+| Add/remove `Workflow.await(condition)` (no timeout) | No | Emits no command — pure blocking on the coroutine |
+| Add/remove `Workflow.await(Duration, condition)` (with timeout) | **Yes** | The timeout creates a timer command |
+| Change the timeout on `Workflow.await(Duration, condition)` to/from `0` | **Yes** | Same as sleep duration to/from 0 |
+| Change `Workflow.await` condition logic (no external/random state) | No | Condition is pure logic, no command |
+| **Side effects & markers** | | |
+| Add/remove `Workflow.sideEffect()` | **Yes** | Records a Marker command in history |
+| Reorder `Workflow.sideEffect()` calls | **Yes** | Marker sequence must match |
+| Add/remove/change `Workflow.getVersion()` change ID | **Yes** | Records a Marker; mismatched ID = wrong branch |
+| Remove `Workflow.getVersion()` before all old histories expire | **Yes** | Replay reads the Marker but finds no code to handle it |
+| **Child workflows** | | |
+| Add/remove a child workflow execution | **Yes** | Adds/removes a StartChildWorkflowExecution command |
+| Reorder child workflow executions | **Yes** | Command sequence shifts |
+| **Signals & external workflows** | | |
+| Add/remove `ExternalWorkflowStub.signal()` | **Yes** | Records a SignalExternalWorkflow command |
+| Add a new `@SignalMethod` handler | No | Handlers don't emit commands on their own |
+| Change signal handler logic (no commands inside) | No | Pure logic |
+| **Search attributes** | | |
+| Add/remove `Workflow.upsertTypedSearchAttributes()` | **Yes** | Records a UpsertWorkflowSearchAttributes command |
+| **Non-deterministic code** | | |
+| Use `System.currentTimeMillis()` or `Instant.now()` directly in workflow | **Yes** | Returns different values on replay |
+| Use `Math.random()`, `UUID.randomUUID()`, or any random source directly | **Yes** | Returns different values on replay |
+| Read environment variables or external config directly in workflow | **Yes** | May differ between original run and replay |
+| Call blocking I/O or HTTP directly in workflow code | **Yes** | Must be done inside an activity |
+| **Safe changes** | | |
+| Change workflow execution timeout | No | Not part of command sequence |
+| Change non-command business logic (if/else on workflow inputs, logging) | No | No command emitted |
+| Rename the workflow class or method | No | Only the workflow type name registered matters |
+| Add/remove logging | No | No command emitted |
 
 ---
 
@@ -222,7 +254,7 @@ git checkout solution/version-sdk
 
 Restart the worker. The stuck workflow unblocks immediately:
 
-- `getVersion("addFraudCheck", DEFAULT_VERSION, 2)` reads `DEFAULT_VERSION` from the marker in history
+- `getVersion("addFraudCheck", DEFAULT_VERSION, 2)` finds **no Marker** in the old execution's history (the baseline code never called `getVersion`) → returns `DEFAULT_VERSION`
 - The old execution **skips** `fraudCheck` and continues from `reserveFunds`
 - Send the reservation signal to complete it:
 
@@ -232,9 +264,12 @@ curl -s -X POST http://localhost:9090/payments/1/reservation-result \
   -d '{"success": true}' | jq .
 ```
 
-New workflows started after this commit will run advanced `fraudCheck` (version = 2).
-Mid-age workflows will run basic `fraudCheck` (version = 1).
-Old workflows that were running will skip it (version = `DEFAULT_VERSION`).
+In this 3-step demo you will see two states:
+- **Old workflows** (started from `baseline`) → no Marker in history → `DEFAULT_VERSION` → skip `fraudCheck`
+- **New workflows** (started after this commit) → Marker recorded with value `2` → run advanced `fraudCheck`
+
+The code also handles `version = 1` (basic `fraudCheck`). That path would be exercised if there had been an intermediate deployment that used `getVersion("addFraudCheck", DEFAULT_VERSION, 1)` before upgrading to `maxSupported = 2`. It is not triggered by this demo but is included to show how to safely evolve a patch across multiple versions.
+
 **All coexist safely on the same worker.**
 
 ---
